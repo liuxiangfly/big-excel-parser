@@ -4,7 +4,7 @@ package com.lxm.big.excel.parser.utils;
 /**
  * 
  * ClassName: com.lxm.big.excel.parser.utils.ExcelReaderUtil <br/>
- * Function: <br/>
+ * Function: excel文件读取解析工具<br/>
  * Date: 2020年7月26日 下午3:13:37 <br/>
  * @author liuxiangming <br/>
  */
@@ -16,6 +16,12 @@ public class ExcelReaderUtil {
     //excel2007扩展名
     public static final String EXCEL07_EXTENSION = ".xlsx";
 
+    /**
+     * 读取excel数据，并解析处理
+     * @param fileName
+     * @param excelRowProcessor
+     * @return
+     */
     public static int readExcel(String fileName, ExcelRowProcessor excelRowProcessor) {
         int totalRows =0;
         try{
