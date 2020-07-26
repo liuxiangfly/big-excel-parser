@@ -12,7 +12,7 @@ import java.util.List;
 public interface ExcelDataGenerator {
 	
 	/**
-	 * 获取写入excel的数据
+	 * 获取写入excel的数据，返回数据为空或者小于size时，认为数据已获取完毕；
 	 * @param startIndex 获取数据开始下标，从0开始
 	 * @param size 一次获取数据大小
 	 * @return
