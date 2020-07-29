@@ -26,8 +26,8 @@ public class ExcelWriterUtil {
 		do{
 			rows = excelDataGenerator.generateRowsData(startIndex, size);
 			writer.write(rows);
-			startIndex += size;
-		}while(rows != null && rows.size() >= size);
+			startIndex += rows.size();
+		}while(rows != null && rows.size() > 0);
 		writer.finish();
 	}
 
