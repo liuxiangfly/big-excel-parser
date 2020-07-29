@@ -89,6 +89,9 @@ public class ExcelXlsReader implements HSSFListener {
 	 * 判断整行是否为空行的标记
 	 */
 	private boolean flag = false;
+	
+	// 表头列数
+	private int maxColumn;
 
 	@SuppressWarnings("unused")
 	private String sheetName;
@@ -286,9 +289,17 @@ public class ExcelXlsReader implements HSSFListener {
 			}
 			lastColumnNumber = -1;
 
-			if (flag) { // 该行不为空行，进行信息
+			if (flag) { // 该行不为空行，进行信息处理
+				if(curRow == 0){ //表头
+					maxColumn = cellList.size();
+				}else{ //补全一行尾部可能缺失的单元格，避免数据处理时出现的越标问题
+					int len = maxColumn - cellList.size();
+					for(int i = 0; i < len; i++){
+						cellList.add("");
+					}
+				}
 				excelRowProcessor.processRow(filePath, sheetName, sheetIndex,
-						curRow + 1, cellList); // 每行结束时，调用sendRows()方法
+						curRow + 1, cellList); 
 				totalRows++;
 			}
 			// 清空容器

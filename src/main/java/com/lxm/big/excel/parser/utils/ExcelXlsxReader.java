@@ -58,7 +58,7 @@ public class ExcelXlsxReader extends DefaultHandler {
 	/**
 	 * 工作表索引
 	 */
-	private int sheetIndex = 0;
+	private int sheetIndex = 1;
 
 	/**
 	 * sheet名
@@ -66,7 +66,7 @@ public class ExcelXlsxReader extends DefaultHandler {
 	private String sheetName = "";
 
 	/**
-	 * 总行数
+	 * 处理总行数
 	 */
 	private int totalRows = 0;
 
@@ -81,11 +81,6 @@ public class ExcelXlsxReader extends DefaultHandler {
 	private boolean flag = false;
 
 	/**
-	 * 当前行
-	 */
-	private int curRow = 1;
-
-	/**
 	 * 当前列
 	 */
 	private int curCol = 0;
@@ -94,11 +89,6 @@ public class ExcelXlsxReader extends DefaultHandler {
 	 * T元素标识
 	 */
 	private boolean isTElement;
-
-	/**
-	 * 异常信息，如果为空则表示没有异常
-	 */
-	private String exceptionMessage;
 
 	/**
 	 * 单元格数据类型，默认为字符串类型
@@ -117,17 +107,23 @@ public class ExcelXlsxReader extends DefaultHandler {
 	 */
 	private String formatString;
 
-	// 定义前一个元素和当前元素的位置，用来计算其中空的单元格数量，如A6和A8等
-	private String preRef = null, ref = null;
+	// 定义前一个元素
+	private String preRef = null;
+	
+	// 定义当前元素的位置（A1,B2等）
+	private String ref = null;
 
 	// 定义该文档一行最大的单元格数，用来补全一行最后可能缺失的单元格
 	private String maxRef = null;
+
+	// 定义当前元素名称
+	private String tag;
 
 	/**
 	 * 单元格
 	 */
 	private StylesTable stylesTable;
-	
+
 	/**
 	 * excel数据处理器
 	 */
@@ -135,12 +131,14 @@ public class ExcelXlsxReader extends DefaultHandler {
 
 	/**
 	 * 遍历工作簿中所有的电子表格，处理
+	 * 
 	 * @param filename
 	 * @param excelRowProcessor
 	 * @return
 	 * @throws Exception
 	 */
-	public int process(String filename, ExcelRowProcessor excelRowProcessor) throws Exception {
+	public int process(String filename, ExcelRowProcessor excelRowProcessor)
+			throws Exception {
 		filePath = filename;
 		this.excelRowProcessor = excelRowProcessor;
 		OPCPackage pkg = OPCPackage.open(filename);
@@ -154,18 +152,14 @@ public class ExcelXlsxReader extends DefaultHandler {
 		XSSFReader.SheetIterator sheets = (XSSFReader.SheetIterator) xssfReader
 				.getSheetsData();
 		while (sheets.hasNext()) { // 遍历sheet
-			curRow = 1; // 标记初始行为第一行
-			this.sheetIndex++;
-			if(this.sheetIndex != sheetIndex){
-				continue;
-			}
 			InputStream sheet = sheets.next(); // sheets.next()和sheets.getSheetName()不能换位置，否则sheetName报错
 			sheetName = sheets.getSheetName();
 			InputSource sheetSource = new InputSource(sheet);
 			parser.parse(sheetSource); // 解析excel的每条记录，在这个过程中startElement()、characters()、endElement()这三个函数会依次执行
 			sheet.close();
+			this.sheetIndex++;
 		}
-		return totalRows; // 返回该excel文件的总行数，不包括首列和空行
+		return totalRows; // 返回该excel文件的处理总行数
 	}
 
 	/**
@@ -183,27 +177,22 @@ public class ExcelXlsxReader extends DefaultHandler {
 		// c => 单元格
 		if ("c".equals(name)) {
 			// 前一个单元格的位置
-			if (preRef == null) {
-				preRef = attributes.getValue("r");
-			} else {
-				preRef = ref;
-			}
-
+			preRef = ref;
 			// 当前单元格的位置
 			ref = attributes.getValue("r");
 			// 设定单元格类型
 			this.setNextDataType(attributes);
 		}
-
 		// 当元素为t时
 		if ("t".equals(name)) {
 			isTElement = true;
 		} else {
 			isTElement = false;
 		}
-
 		// 置空
 		lastIndex = "";
+		// 设置当前元素名称
+		tag = name;
 	}
 
 	/**
@@ -218,7 +207,9 @@ public class ExcelXlsxReader extends DefaultHandler {
 	@Override
 	public void characters(char[] ch, int start, int length)
 			throws SAXException {
-		lastIndex += new String(ch, start, length);
+		if ("v".equals(tag)) { // v => 单元格的值，如果单元格是字符串，则v标签的值为该字符串在SST中的索引
+			lastIndex += new String(ch, start, length);
+		}
 	}
 
 	/**
@@ -232,7 +223,6 @@ public class ExcelXlsxReader extends DefaultHandler {
 	@Override
 	public void endElement(String uri, String localName, String name)
 			throws SAXException {
-
 		// t元素也包含字符串
 		if (isTElement) {// 这个程序没经过
 			// 将单元格内容加入rowlist中，在这之前先去掉字符串前后的空白符
@@ -244,17 +234,15 @@ public class ExcelXlsxReader extends DefaultHandler {
 			if (value != null && !"".equals(value)) {
 				flag = true;
 			}
-		} else if ("v".equals(name)) {
+		} else if ("c".equals(name)) {
+			// 补充该行空单元格
+			int len = getColumnIndex(ref) - (preRef == null? 0: getColumnIndex(preRef)) - 1;
+			for(int i = 0; i < len; i++){
+				cellList.add(curCol, "");
+				curCol++;
+			}
 			// v => 单元格的值，如果单元格是字符串，则v标签的值为该字符串在SST中的索引
 			String value = this.getDataValue(lastIndex.trim(), "");// 根据索引值获取对应的单元格值
-			// 补全单元格之间的空单元格
-			if (!ref.equals(preRef)) {
-				int len = countNullCell(ref, preRef);
-				for (int i = 0; i < len; i++) {
-					cellList.add(curCol, "");
-					curCol++;
-				}
-			}
 			cellList.add(curCol, value);
 			curCol++;
 			// 如果里面某个单元格含有值，则标识该行不为空行
@@ -264,27 +252,27 @@ public class ExcelXlsxReader extends DefaultHandler {
 		} else {
 			// 如果标签名称为row，这说明已到行尾，调用optRows()方法
 			if ("row".equals(name)) {
+				int curRow = getRowIndex(ref);
 				// 默认第一行为表头，以该行单元格数目为最大数目
 				if (curRow == 1) {
 					maxRef = ref;
 				}
-				// 补全一行尾部可能缺失的单元格
+				// 补全一行尾部可能缺失的单元格，避免数据处理时出现的越标问题
 				if (maxRef != null) {
-					int len = countNullCell(maxRef, ref);
-					for (int i = 0; i <= len; i++) {
+					int len = getColumnIndex(maxRef) - getColumnIndex(ref);
+					for (int i = 0; i < len; i++) {
 						cellList.add(curCol, "");
 						curCol++;
 					}
 				}
 
 				if (flag) { // 该行不为空行时进行处理
-					excelRowProcessor.processRow(filePath, sheetName, sheetIndex,
-							curRow, cellList);
+					excelRowProcessor.processRow(filePath, sheetName,
+							sheetIndex, curRow, cellList);
 					totalRows++;
 				}
 
 				cellList.clear();
-				curRow++;
 				curCol = 0;
 				preRef = null;
 				ref = null;
@@ -349,6 +337,9 @@ public class ExcelXlsxReader extends DefaultHandler {
 	 */
 	@SuppressWarnings("deprecation")
 	public String getDataValue(String value, String thisStr) {
+		if ("".equals(value) || value == null) {
+			return "";
+		}
 		switch (nextDataType) {
 		// 这几个的顺序不能随便交换，交换了很可能会导致数据错误
 		case BOOL: // 布尔值
@@ -431,11 +422,43 @@ public class ExcelXlsxReader extends DefaultHandler {
 		}
 		return str;
 	}
-
-	/**
-	 * @return the exceptionMessage
-	 */
-	public String getExceptionMessage() {
-		return exceptionMessage;
+	
+    /**
+     * 返回元素的列号（从1开始）
+     * @param ref
+     * @return
+     */
+    public int getColumnIndex(String ref){
+    	String column = ref.replaceAll("\\d+", "");
+    	int index = 0;
+    	int pow = 1; // 初始为26的0次方，后续每循环一次乘以26一次
+    	for(int i = column.length() - 1; i >= 0; i--){
+    		index += (Character.toUpperCase(column.charAt(i)) - 64) *  pow;
+    		pow *= 26;
+    	}
+    	return index;
+    }
+    
+    /**
+     * 返回当前元素的行号（从1开始）
+     * @param ref
+     * @return
+     */
+    public int getRowIndex(String ref){
+    	return Integer.parseInt(ref.replaceAll("[A-Za-z]+", ""));
+    }
+    
+    public static void main(String[] args) {
+		String a = "A12";
+		String c = "C23";
+		String ab = "AB23";
+		ExcelXlsxReader reader = new ExcelXlsxReader();
+		System.out.println(reader.getColumnIndex(a));
+		System.out.println(reader.getColumnIndex(c));
+		System.out.println(reader.getColumnIndex(ab));
+		System.out.println(reader.getRowIndex(a));
+		System.out.println(reader.getRowIndex(c));
+		System.out.println(reader.getRowIndex(ab));
 	}
+
 }
