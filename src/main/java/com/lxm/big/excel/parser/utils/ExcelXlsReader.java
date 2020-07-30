@@ -24,8 +24,6 @@ public class ExcelXlsReader implements HSSFListener {
 
 	private int minColums = -1;
 
-	private POIFSFileSystem fs;
-
 	/**
 	 * 总行数
 	 */
@@ -111,7 +109,7 @@ public class ExcelXlsReader implements HSSFListener {
 	public int process(String fileName, ExcelRowProcessor excelRowProcessor) throws Exception {
 		filePath = fileName;
 		this.excelRowProcessor = excelRowProcessor;
-		this.fs = new POIFSFileSystem(new FileInputStream(fileName));
+		POIFSFileSystem fs = new POIFSFileSystem(new FileInputStream(fileName));
 		MissingRecordAwareHSSFListener listener = new MissingRecordAwareHSSFListener(
 				this);
 		formatListener = new FormatTrackingHSSFListener(listener);
@@ -175,7 +173,7 @@ public class ExcelXlsReader implements HSSFListener {
 			BoolErrRecord berec = (BoolErrRecord) record;
 			thisRow = berec.getRow();
 			thisColumn = berec.getColumn();
-			thisStr = berec.getBooleanValue() + "";
+			thisStr = Boolean.toString(berec.getBooleanValue());
 			cellList.add(thisColumn, thisStr);
 			checkRowIsNull(thisStr); // 如果里面某个单元格含有值，则标识该行不为空行
 			break;
@@ -242,7 +240,7 @@ public class ExcelXlsReader implements HSSFListener {
 			// h:mm格式，不符合要求
 
 			// 第二种方式，参照formatNumberDateCell里面的实现方法编写
-			Double valueDouble = ((NumberRecord) numrec).getValue();
+			Double valueDouble = numrec.getValue();
 			String formatString = formatListener.getFormatString(numrec);
 			if (formatString.contains("m/d/yy")) {
 				formatString = "yyyy-MM-dd hh:mm:ss";
@@ -281,11 +279,9 @@ public class ExcelXlsReader implements HSSFListener {
 
 		// 行结束时的操作
 		if (record instanceof LastCellOfRowDummyRecord) {
-			if (minColums > 0) {
+			if (minColums > 0 && lastColumnNumber == -1) {
 				// 列值重新置空
-				if (lastColumnNumber == -1) {
-					lastColumnNumber = 0;
-				}
+			    lastColumnNumber = 0;
 			}
 			lastColumnNumber = -1;
 
@@ -319,3 +315,4 @@ public class ExcelXlsReader implements HSSFListener {
 		}
 	}
 }
+

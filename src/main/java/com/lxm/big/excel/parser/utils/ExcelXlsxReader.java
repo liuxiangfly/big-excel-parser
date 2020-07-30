@@ -144,10 +144,9 @@ public class ExcelXlsxReader extends DefaultHandler {
 		OPCPackage pkg = OPCPackage.open(filename);
 		XSSFReader xssfReader = new XSSFReader(pkg);
 		stylesTable = xssfReader.getStylesTable();
-		SharedStringsTable sst = xssfReader.getSharedStringsTable();
+		this.sst = xssfReader.getSharedStringsTable();
 		XMLReader parser = XMLReaderFactory
 				.createXMLReader("org.apache.xerces.parsers.SAXParser");
-		this.sst = sst;
 		parser.setContentHandler(this);
 		XSSFReader.SheetIterator sheets = (XSSFReader.SheetIterator) xssfReader
 				.getSheetsData();
@@ -242,7 +241,7 @@ public class ExcelXlsxReader extends DefaultHandler {
 				curCol++;
 			}
 			// v => 单元格的值，如果单元格是字符串，则v标签的值为该字符串在SST中的索引
-			String value = this.getDataValue(lastIndex.trim(), "");// 根据索引值获取对应的单元格值
+			String value = this.getDataValue(lastIndex.trim());// 根据索引值获取对应的单元格值
 			cellList.add(curCol, value);
 			curCol++;
 			// 如果里面某个单元格含有值，则标识该行不为空行
@@ -292,7 +291,7 @@ public class ExcelXlsxReader extends DefaultHandler {
 		formatString = null;
 		String cellType = attributes.getValue("t"); // 单元格类型
 		String cellStyleStr = attributes.getValue("s"); //
-		String columnData = attributes.getValue("r"); // 获取单元格的位置，如A1,B1
+//		String columnData = attributes.getValue("r"); // 获取单元格的位置，如A1,B1
 
 		if ("b".equals(cellType)) { // 处理布尔值
 			nextDataType = CellDataType.BOOL;
@@ -311,15 +310,13 @@ public class ExcelXlsxReader extends DefaultHandler {
 			XSSFCellStyle style = stylesTable.getStyleAt(styleIndex);
 			formatIndex = style.getDataFormat();
 			formatString = style.getDataFormatString();
-
+			if (formatString == null) {
+                nextDataType = CellDataType.NULL;
+                formatString = BuiltinFormats.getBuiltinFormat(formatIndex);
+            }
 			if (formatString.contains("m/d/yy")) {
 				nextDataType = CellDataType.DATE;
 				formatString = "yyyy-MM-dd hh:mm:ss";
-			}
-
-			if (formatString == null) {
-				nextDataType = CellDataType.NULL;
-				formatString = BuiltinFormats.getBuiltinFormat(formatIndex);
 			}
 		}
 	}
@@ -331,15 +328,15 @@ public class ExcelXlsxReader extends DefaultHandler {
 	 *            单元格的值， value代表解析：BOOL的为0或1，
 	 *            ERROR的为内容值，FORMULA的为内容值，INLINESTR的为索引值需转换为内容值，
 	 *            SSTINDEX的为索引值需转换为内容值， NUMBER为内容值，DATE为内容值
-	 * @param thisStr
-	 *            一个空字符串
+
 	 * @return
 	 */
 	@SuppressWarnings("deprecation")
-	public String getDataValue(String value, String thisStr) {
+	public String getDataValue(String value) {
 		if ("".equals(value) || value == null) {
 			return "";
 		}
+		String thisStr = "";
 		switch (nextDataType) {
 		// 这几个的顺序不能随便交换，交换了很可能会导致数据错误
 		case BOOL: // 布尔值
@@ -347,26 +344,24 @@ public class ExcelXlsxReader extends DefaultHandler {
 			thisStr = first == '0' ? "FALSE" : "TRUE";
 			break;
 		case ERROR: // 错误
-			thisStr = "\"ERROR:" + value.toString() + '"';
+			thisStr = "\"ERROR:" + value + '"';
 			break;
 		case FORMULA: // 公式
-			thisStr = '"' + value.toString() + '"';
+			thisStr = '"' + value + '"';
 			break;
 		case INLINESTR:
-			XSSFRichTextString rtsi = new XSSFRichTextString(value.toString());
+			XSSFRichTextString rtsi = new XSSFRichTextString(value);
 			thisStr = rtsi.toString();
-			rtsi = null;
 			break;
 		case SSTINDEX: // 字符串
-			String sstIndex = value.toString();
+			String sstIndex = value;
 			try {
 				int idx = Integer.parseInt(sstIndex);
 				XSSFRichTextString rtss = new XSSFRichTextString(
 						sst.getEntryAt(idx));// 根据idx索引值获取内容值
 				thisStr = rtss.toString();
-				rtss = null;
 			} catch (NumberFormatException ex) {
-				thisStr = value.toString();
+				thisStr = value;
 			}
 			break;
 		case NUMBER: // 数字
@@ -386,41 +381,10 @@ public class ExcelXlsxReader extends DefaultHandler {
 			thisStr = thisStr.replace("T", " ");
 			break;
 		default:
-			thisStr = " ";
+			thisStr = "";
 			break;
 		}
 		return thisStr;
-	}
-
-	public int countNullCell(String ref, String preRef) {
-		// excel2007最大行数是1048576，最大列数是16384，最后一列列名是XFD
-		String xfd = ref.replaceAll("\\d+", "");
-		String xfd_1 = preRef.replaceAll("\\d+", "");
-
-		xfd = fillChar(xfd, 3, '@', true);
-		xfd_1 = fillChar(xfd_1, 3, '@', true);
-
-		char[] letter = xfd.toCharArray();
-		char[] letter_1 = xfd_1.toCharArray();
-		int res = (letter[0] - letter_1[0]) * 26 * 26
-				+ (letter[1] - letter_1[1]) * 26 + (letter[2] - letter_1[2]);
-		return res - 1;
-	}
-
-	public String fillChar(String str, int len, char let, boolean isPre) {
-		int len_1 = str.length();
-		if (len_1 < len) {
-			if (isPre) {
-				for (int i = 0; i < (len - len_1); i++) {
-					str = let + str;
-				}
-			} else {
-				for (int i = 0; i < (len - len_1); i++) {
-					str = str + let;
-				}
-			}
-		}
-		return str;
 	}
 	
     /**
@@ -448,17 +412,4 @@ public class ExcelXlsxReader extends DefaultHandler {
     	return Integer.parseInt(ref.replaceAll("[A-Za-z]+", ""));
     }
     
-    public static void main(String[] args) {
-		String a = "A12";
-		String c = "C23";
-		String ab = "AB23";
-		ExcelXlsxReader reader = new ExcelXlsxReader();
-		System.out.println(reader.getColumnIndex(a));
-		System.out.println(reader.getColumnIndex(c));
-		System.out.println(reader.getColumnIndex(ab));
-		System.out.println(reader.getRowIndex(a));
-		System.out.println(reader.getRowIndex(c));
-		System.out.println(reader.getRowIndex(ab));
-	}
-
 }
